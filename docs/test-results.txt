@@ -32,3 +32,25 @@ ok  	p2pfs/internal/ipc	2.395s
 ok  	p2pfs/internal/node	1.492s
 ok  	p2pfs/internal/rpc	1.746s
 ok  	p2pfs/internal/state	1.954s
+
+=== Re-run of the failing test, 13 Nov 2026 (later the same day; source unchanged at final-cw1) ===
+Environment: go1.24.7 linux/amd64 (a clean copy of source/, same pinned module versions).
+The 18:06 make check run above failed once on TestIntegratedTwoNodeFlowOverREST
+("stop http: context deadline exceeded" after 2.01 s); the -race run straight after it passed.
+
+go test ./... -count=1               all six packages ok
+go test -race ./... -count=1         all six packages ok
+TestIntegratedTwoNodeFlowOverREST -count=200, -cpu 1/2/4/8   800 PASS, 0 FAIL
+TestIntegratedTwoNodeFlowOverREST -race -count=100           100 PASS, 0 FAIL
+go test ./internal/node -count=50                            ok
+
+Diagnosis: http.Server.Shutdown waits for connections in StateNew (accepted, no request
+yet) until they are 5 s old. The test's ShutdownTimeout is 2 s, so a spare keep-alive
+connection dialled by the test's default HTTP client and not yet used makes Run return
+"stop http: context deadline exceeded" after exactly 2 s. Confirmed with a throwaway test
+(not committed) that opens one raw TCP connection to the HTTP port and then cancels the
+node: Run returned "stop http: context deadline exceeded after 2s", matching the failure.
+
+Status: intermittent; not reproduced in 950 further runs. Not fixed in final-cw1.
+Planned fix (CW2): force-close HTTP on shutdown timeout, as stopGRPC already does for gRPC,
+and call CloseIdleConnections on the test client before stopping the node.
