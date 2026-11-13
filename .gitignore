@@ -1,0 +1,17 @@
+# build output
+/source/bin/
+*.exe
+*.test
+*.out
+# runtime data and secrets: never commit
+/source/data/
+/data/
+.env
+certs/
+*.key
+*.pem
+!**/testdata/**/*.pem
+# editors
+.idea/
+.vscode/
+.DS_Store
