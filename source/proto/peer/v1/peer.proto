@@ -1,0 +1,51 @@
+// PeerService is the node-to-node remote invocation contract.
+//
+// Compatibility rules (proto3):
+//   - never reuse or renumber a field; reserve removed numbers instead
+//   - add new fields freely: old readers ignore them, old writers leave zero values
+//   - zero values mean "not set", so every default below is chosen to be safe
+syntax = "proto3";
+
+package p2pfs.peer.v1;
+
+option go_package = "p2pfs/gen/peerv1;peerv1";
+
+service PeerService {
+  // GetNodeInfo returns a peer's identity and a summary of its state.
+  rpc GetNodeInfo(GetNodeInfoRequest) returns (NodeInfo);
+
+  // ListFiles returns file metadata held by the called node, sorted by name,
+  // in pages. Errors: INVALID_ARGUMENT for a bad prefix, page size or token.
+  rpc ListFiles(ListFilesRequest) returns (ListFilesResponse);
+}
+
+message GetNodeInfoRequest {}
+
+message NodeInfo {
+  string node_id = 1;
+  string status = 2;          // "active" | "draining" | "maintenance"
+  int64 started_unix_ms = 3;
+  uint32 peer_count = 4;
+  uint32 file_count = 5;
+  uint32 protocol_version = 6; // lets a caller detect an incompatible peer
+}
+
+message ListFilesRequest {
+  string name_prefix = 1; // "" = all files
+  uint32 page_size = 2;   // 0 = server default (100); max 1000
+  string page_token = 3;  // opaque; "" = first page
+}
+
+message FileMetadata {
+  string name = 1;
+  int64 size_bytes = 2;      // units in the name: no guessing bytes vs KiB
+  string sha256_hex = 3;     // lowercase hex, 64 chars
+  string owner_node_id = 4;
+  int64 updated_unix_ms = 5; // int64 epoch ms: simple, language-neutral
+}
+
+message ListFilesResponse {
+  string node_id = 1;           // who answered (useful through proxies)
+  repeated FileMetadata files = 2;
+  string next_page_token = 3;   // "" = no more pages
+}

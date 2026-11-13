@@ -1,0 +1,228 @@
+6CC545 CW1 — two-node demo, re-run from final-cw1
+Student: 100872005
+Produced: 2026-11-13 18:07 UTC via scripts/demo-cw1.sh
+
+
+[1m== 1. Health of both nodes[0m
+$ curl -s localhost:8081/healthz; curl -s localhost:8082/healthz
+{
+  "status": "ok",
+  "nodeId": "node1",
+  "uptimeSeconds": 0,
+  "time": "2026-11-13T18:07:08Z"
+}
+{
+  "status": "ok",
+  "nodeId": "node2",
+  "uptimeSeconds": 0,
+  "time": "2026-11-13T18:07:08Z"
+}
+
+
+[1m== 2. REST state change on node2[0m
+$ curl -s -X POST localhost:8082/v1/node/status -H Content-Type:application/json -d '{"status":"draining","reason":"demo"}'
+{
+  "id": "node2",
+  "status": "draining",
+  "reason": "demo",
+  "updatedAt": "2026-11-13T18:07:08.584706Z"
+}
+
+
+[1m== 3. Register file metadata on node2[0m
+$ curl -s -X POST localhost:8082/v1/files -H Content-Type:application/json -d '{"name":"hello.txt","size":11,"sha256":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"}'
+{
+  "name": "hello.txt",
+  "size": 11,
+  "sha256": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+  "owner": "node2",
+  "updatedAt": "2026-11-13T18:07:08.592188Z"
+}
+
+
+[1m== 4. node1 probes node2 (TCP+UDP+gRPC)[0m
+$ curl -s -X POST localhost:8081/v1/peers/node2/probe
+{
+  "peerId": "node2",
+  "tcp": {
+    "ok": true,
+    "rttMs": 0.327
+  },
+  "udp": {
+    "ok": true,
+    "rttMs": 0.236
+  },
+  "grpc": {
+    "ok": true,
+    "rttMs": 1.511
+  }
+}
+
+
+[1m== 5. node1 lists node2's files (gRPC)[0m
+$ curl -s localhost:8081/v1/peers/node2/files
+{
+  "peerId": "node2",
+  "count": 1,
+  "files": [
+    {
+      "name": "hello.txt",
+      "size": 11,
+      "sha256": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+      "owner": "node2",
+      "updatedAt": "2026-11-13T18:07:08.592Z"
+    }
+  ]
+}
+
+
+[1m== 6. Direct TCP ping with p2pctl[0m
+$ '/var/folders/z6/7dv0l9754db45p6qr2j3qb0w0000gn/T/tmp.qXilO1fKK6/p2pctl' tcp-ping -addr 127.0.0.1:7082 -from node1
+{
+  "v": 1,
+  "type": "pong",
+  "id": "940e25f47fb7c547",
+  "from": "node2",
+  "ts": 1794593228883,
+  "body": {
+    "nodeId": "node2",
+    "status": "draining",
+    "peers": 1,
+    "files": 1
+  }
+}
+(round trip 671µs)
+
+
+[1m== 7. Direct gRPC call with p2pctl[0m
+$ '/var/folders/z6/7dv0l9754db45p6qr2j3qb0w0000gn/T/tmp.qXilO1fKK6/p2pctl' info -addr 127.0.0.1:9082
+{
+  "node_id": "node2",
+  "status": "draining",
+  "started_unix_ms": 1794593228497,
+  "peer_count": 1,
+  "file_count": 1,
+  "protocol_version": 1
+}
+
+
+[1m-------- negative cases --------[0m
+
+[1m== N1. Malformed JSON -> 400[0m
+$ curl -s -o /dev/stderr -w 'HTTP %{http_code}\n' -X POST localhost:8081/v1/peers -H Content-Type:application/json -d '{"id":' 2>&1
+{
+  "error": {
+    "code": "invalid_json",
+    "message": "malformed JSON",
+    "requestId": "7547f1607e30e057"
+  }
+}
+HTTP 400
+
+
+[1m== N2. Unknown field -> 400[0m
+$ curl -s -w '\nHTTP %{http_code}\n' -X POST localhost:8081/v1/node/status -H Content-Type:application/json -d '{"status":"active","admin":true}'
+{
+  "error": {
+    "code": "unknown_field",
+    "message": "unknown field \"admin\"",
+    "requestId": "1a91050bf4917bfd"
+  }
+}
+
+HTTP 400
+
+
+[1m== N3. Wrong media type -> 415[0m
+$ curl -s -w '\nHTTP %{http_code}\n' -X POST localhost:8081/v1/node/status -H 'Content-Type: text/plain' -d x
+{
+  "error": {
+    "code": "unsupported_media_type",
+    "message": "Content-Type must be application/json",
+    "requestId": "e5cb2f84e211e11c"
+  }
+}
+
+HTTP 415
+
+
+[1m== N4. Path traversal name -> 422[0m
+$ curl -s -w '\nHTTP %{http_code}\n' -X POST localhost:8081/v1/files -H Content-Type:application/json -d '{"name":"../etc/passwd","size":1,"sha256":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"}'
+{
+  "error": {
+    "code": "invalid_value",
+    "message": "invalid: file name \"../etc/passwd\" must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ and not contain '..'",
+    "requestId": "dacabbf11cd3a306"
+  }
+}
+
+HTTP 422
+
+
+[1m== N5. Duplicate peer -> 409[0m
+$ curl -s -w '\nHTTP %{http_code}\n' -X POST localhost:8081/v1/peers -H Content-Type:application/json -d '{"id":"node2","addrs":{"grpc":"127.0.0.1:9082"}}'
+{
+  "error": {
+    "code": "conflict",
+    "message": "conflict: peer \"node2\" already registered",
+    "requestId": "400ef824bf1470c0"
+  }
+}
+
+HTTP 409
+
+
+[1m== N6. Invalid gRPC request[0m
+$ '/var/folders/z6/7dv0l9754db45p6qr2j3qb0w0000gn/T/tmp.qXilO1fKK6/p2pctl' files -addr 127.0.0.1:9082 -prefix '../x'
+files failed: code=InvalidArgument msg="name_prefix must be ≤128 chars of A-Z a-z 0-9 . _ -"
+
+
+[1m== N7. UDP to closed port[0m
+$ '/var/folders/z6/7dv0l9754db45p6qr2j3qb0w0000gn/T/tmp.qXilO1fKK6/p2pctl' udp-ping -addr 127.0.0.1:7999 -timeout 600ms
+udp-ping failed after 0s: udp request to 127.0.0.1:7999 failed after 3 attempts: read udp 127.0.0.1:55161->127.0.0.1:7999: read: connection refused
+
+
+[1m== N8. Port already in use -> exit 1[0m
+$ '/var/folders/z6/7dv0l9754db45p6qr2j3qb0w0000gn/T/tmp.qXilO1fKK6/node' -id node1 -http 127.0.0.1:8081 -tcp 127.0.0.1:7081 -udp 127.0.0.1:7081 -grpc 127.0.0.1:9081 2>&1 | tail -1; echo "exit code: ${PIPESTATUS[0]}"
+{"time":"2026-11-13T18:07:08.950577Z","level":"ERROR","msg":"startup failed","node":"node1","err":"bind http 127.0.0.1:8081: listen tcp 127.0.0.1:8081: bind: address already in use"}
+exit code: 1
+
+
+[1m-------- peer failure --------[0m
+
+[1m== F1. node2 stopped; node1 lists files -> 502 within bound[0m
+$ time curl -s -w '\nHTTP %{http_code}\n' localhost:8081/v1/peers/node2/files
+{
+  "error": {
+    "code": "peer_unavailable",
+    "message": "peer unavailable: node2: connection error: desc = \"transport: Error while dialing: dial tcp 127.0.0.1:9082: connect: connection refused\"",
+    "requestId": "44d85520f35a359f"
+  }
+}
+
+HTTP 502
+
+real	0m0.009s
+user	0m0.003s
+sys	0m0.003s
+
+
+[1m== F2. node1 still healthy[0m
+$ curl -s localhost:8081/healthz
+{
+  "status": "ok",
+  "nodeId": "node1",
+  "uptimeSeconds": 0,
+  "time": "2026-11-13T18:07:08Z"
+}
+
+== Shutdown logs (last 2 lines each)
+==> /var/folders/z6/7dv0l9754db45p6qr2j3qb0w0000gn/T/tmp.vf1UMfucVL/node1.log <==
+{"time":"2026-11-13T18:07:08.968052Z","level":"INFO","msg":"shutdown requested","node":"node1"}
+{"time":"2026-11-13T18:07:08.968163Z","level":"INFO","msg":"node stopped","node":"node1","id":"node1"}
+
+==> /var/folders/z6/7dv0l9754db45p6qr2j3qb0w0000gn/T/tmp.vf1UMfucVL/node2.log <==
+{"time":"2026-11-13T18:07:08.951159Z","level":"INFO","msg":"shutdown requested","node":"node2"}
+{"time":"2026-11-13T18:07:08.951572Z","level":"INFO","msg":"node stopped","node":"node2","id":"node2"}
+
+Exit code: 0

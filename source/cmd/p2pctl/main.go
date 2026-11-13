@@ -3,6 +3,8 @@
 //	p2pctl tcp-ping  -addr 127.0.0.1:7081
 //	p2pctl udp-ping  -addr 127.0.0.1:7081 -attempts 3
 //	p2pctl tcp-echo  -addr 127.0.0.1:7081 -msg hello
+//	p2pctl info      -addr 127.0.0.1:9081            (gRPC GetNodeInfo)
+//	p2pctl files     -addr 127.0.0.1:9081 -prefix "" (gRPC ListFiles)
 package main
 
 import (
@@ -13,7 +15,11 @@ import (
 	"os"
 	"time"
 
+	"google.golang.org/grpc/status"
+
+	"p2pfs/gen/peerv1"
 	"p2pfs/internal/ipc"
+	"p2pfs/internal/rpc"
 )
 
 func main() {
@@ -29,6 +35,7 @@ func main() {
 	timeout := fs.Duration("timeout", 2*time.Second, "overall deadline")
 	attempts := fs.Int("attempts", 3, "UDP attempts")
 	msg := fs.String("msg", "hello", "echo payload")
+	prefix := fs.String("prefix", "", "file name prefix (files)")
 	fs.Parse(args)
 
 	ctx, cancel := context.WithTimeout(context.Background(), *timeout)
@@ -46,6 +53,8 @@ func main() {
 	case "udp-ping":
 		req.Type = ipc.TypePing
 		resp, err = ipc.UDPRequest(ctx, *addr, req, *attempts)
+	case "info", "files":
+		os.Exit(grpcCmd(ctx, cmd, *addr, *prefix))
 	case "tcp-echo":
 		req.Type = ipc.TypeEcho
 		req.Body, _ = json.Marshal(map[string]string{"msg": *msg})
@@ -63,5 +72,32 @@ func main() {
 }
 
 func usage() {
-	fmt.Fprintln(os.Stderr, "usage: p2pctl <tcp-ping|udp-ping|tcp-echo> [-addr host:port] [flags]")
+	fmt.Fprintln(os.Stderr, "usage: p2pctl <tcp-ping|udp-ping|tcp-echo|info|files> [-addr host:port] [flags]")
+}
+
+func grpcCmd(ctx context.Context, cmd, addr, prefix string) int {
+	pool := rpc.NewPool(nil)
+	defer pool.Close()
+	c, err := pool.Client(addr)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
+	}
+	var out any
+	if cmd == "info" {
+		out, err = c.GetNodeInfo(ctx, &peerv1.GetNodeInfoRequest{})
+	} else {
+		var files []*peerv1.FileMetadata
+		var node string
+		files, node, err = rpc.ListAllFiles(ctx, c, prefix, 20)
+		out = map[string]any{"nodeId": node, "count": len(files), "files": files}
+	}
+	if err != nil {
+		st := status.Convert(err)
+		fmt.Fprintf(os.Stderr, "%s failed: code=%s msg=%q\n", cmd, st.Code(), st.Message())
+		return 1
+	}
+	b, _ := json.MarshalIndent(out, "", "  ")
+	fmt.Println(string(b))
+	return 0
 }

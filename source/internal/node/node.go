@@ -12,9 +12,13 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/grpc"
+
+	"p2pfs/gen/peerv1"
 	"p2pfs/internal/config"
 	"p2pfs/internal/httpapi"
 	"p2pfs/internal/ipc"
+	"p2pfs/internal/rpc"
 	"p2pfs/internal/state"
 )
 
@@ -36,6 +40,9 @@ type Node struct {
 	httpSrv *http.Server
 	tcp     *ipc.TCPServer
 	udp     *ipc.UDPServer
+	grpcLn  net.Listener
+	grpcSrv *grpc.Server
+	pool    *rpc.Pool
 
 	components []component
 }
@@ -70,12 +77,27 @@ func New(cfg config.Config, log *slog.Logger) (n *Node, err error) {
 	}
 	closers = append(closers, udpPC.Close)
 
-	n = &Node{cfg: cfg, log: log, started: time.Now(), httpLn: httpLn}
+	grpcLn, err := net.Listen("tcp", cfg.GRPCAddr)
+	if err != nil {
+		return nil, fmt.Errorf("bind grpc %s: %w", cfg.GRPCAddr, err)
+	}
+	closers = append(closers, grpcLn.Close)
+
+	n = &Node{cfg: cfg, log: log, started: time.Now(), httpLn: httpLn, grpcLn: grpcLn}
 	n.reg = state.NewRegistry(cfg.NodeID, time.Now)
+	n.pool = rpc.NewPool(nil) // plaintext in CW1; mutual TLS arrives in Week 9
+
+	// Manual bootstrap: statically configured peers never expire.
+	for _, ps := range cfg.Peers {
+		if _, err := n.reg.AddPeer(state.Peer{ID: ps.ID, Source: "static",
+			Addrs: state.Addresses{HTTP: ps.HTTP, TCP: ps.TCP, UDP: ps.UDP, GRPC: ps.GRPC}}); err != nil {
+			return nil, fmt.Errorf("static peer %s: %w", ps.ID, err)
+		}
+	}
 
 	n.httpSrv = &http.Server{
 		Handler: httpapi.NewRouter(httpapi.Deps{
-			NodeID: cfg.NodeID, Started: n.started, Now: time.Now, Registry: n.reg, Log: log,
+			NodeID: cfg.NodeID, Started: n.started, Now: time.Now, Registry: n.reg, Peers: n, Log: log,
 		}),
 		ReadHeaderTimeout: 5 * time.Second, // slowloris protection
 		ReadTimeout:       10 * time.Second,
@@ -86,6 +108,8 @@ func New(cfg config.Config, log *slog.Logger) (n *Node, err error) {
 	}
 	n.tcp = ipc.NewTCPServer(tcpLn, cfg.NodeID, n.handleMessage, log.With("transport", "tcp"))
 	n.udp = ipc.NewUDPServer(udpPC, cfg.NodeID, n.handleMessage, log.With("transport", "udp"))
+	n.grpcSrv = rpc.NewGRPCServer(log.With("transport", "grpc"))
+	peerv1.RegisterPeerServiceServer(n.grpcSrv, &rpc.Server{Reg: n.reg, Started: n.started})
 
 	n.components = []component{
 		{"http", func() error {
@@ -96,6 +120,7 @@ func New(cfg config.Config, log *slog.Logger) (n *Node, err error) {
 		}, n.httpSrv.Shutdown},
 		{"tcp", n.tcp.Serve, n.tcp.Shutdown},
 		{"udp", n.udp.Serve, n.udp.Shutdown},
+		{"grpc", func() error { return n.grpcSrv.Serve(grpcLn) }, n.stopGRPC},
 	}
 	return n, nil
 }
@@ -107,6 +132,22 @@ func (n *Node) Registry() *state.Registry { return n.reg }
 func (n *Node) HTTPAddr() string { return n.httpLn.Addr().String() }
 func (n *Node) TCPAddr() string  { return n.tcp.Addr() }
 func (n *Node) UDPAddr() string  { return n.udp.Addr() }
+func (n *Node) GRPCAddr() string { return n.grpcLn.Addr().String() }
+
+// stopGRPC drains in-flight RPCs, but if that takes longer than the
+// shutdown window it forces connections closed rather than hanging.
+func (n *Node) stopGRPC(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() { n.grpcSrv.GracefulStop(); close(done) }()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		n.grpcSrv.Stop()
+		<-done
+		return fmt.Errorf("grpc forced stop: %w", ctx.Err())
+	}
+}
 
 // Run serves every component until ctx is cancelled or one fails. Either way,
 // all components are stopped in reverse start order within ShutdownTimeout.
@@ -123,7 +164,8 @@ func (n *Node) Run(ctx context.Context) error {
 		}(c)
 	}
 	n.log.Info("node started", "id", n.cfg.NodeID,
-		"http", n.HTTPAddr(), "tcp", n.TCPAddr(), "udp", n.UDPAddr())
+		"http", n.HTTPAddr(), "tcp", n.TCPAddr(), "udp", n.UDPAddr(), "grpc", n.GRPCAddr(),
+		"staticPeers", len(n.cfg.Peers))
 
 	var runErr error
 	select {
@@ -144,6 +186,9 @@ func (n *Node) Run(ctx context.Context) error {
 		}
 	}
 	wg.Wait() // every serve goroutine has returned: nothing left running
+	if err := n.pool.Close(); err != nil {
+		runErr = errors.Join(runErr, fmt.Errorf("close rpc pool: %w", err))
+	}
 	n.log.Info("node stopped", "id", n.cfg.NodeID)
 	return runErr
 }

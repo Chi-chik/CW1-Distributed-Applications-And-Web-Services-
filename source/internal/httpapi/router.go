@@ -18,6 +18,7 @@ type Deps struct {
 	Started      time.Time
 	Now          func() time.Time
 	Registry     *state.Registry
+	Peers        PeerOps // optional: enables /v1/peers/{id}/probe and /files
 	Log          *slog.Logger
 	MaxBodyBytes int64
 }
@@ -44,6 +45,11 @@ func NewRouter(d Deps) http.Handler {
 	mux.HandleFunc("POST /v1/peers", a.addPeer)
 	mux.HandleFunc("GET /v1/peers/{id}", a.getPeer)
 	mux.HandleFunc("DELETE /v1/peers/{id}", a.deletePeer)
+
+	if d.Peers != nil {
+		mux.HandleFunc("POST /v1/peers/{id}/probe", a.probePeer)
+		mux.HandleFunc("GET /v1/peers/{id}/files", a.remoteFiles)
+	}
 
 	mux.HandleFunc("GET /v1/files", a.listFiles)
 	mux.HandleFunc("POST /v1/files", a.addFile)

@@ -19,7 +19,7 @@ func quietLogger() *slog.Logger { return slog.New(slog.NewTextHandler(io.Discard
 
 func testConfig(id string) config.Config {
 	return config.Config{
-		NodeID: id, HTTPAddr: "127.0.0.1:0", TCPAddr: "127.0.0.1:0", UDPAddr: "127.0.0.1:0",
+		NodeID: id, HTTPAddr: "127.0.0.1:0", TCPAddr: "127.0.0.1:0", UDPAddr: "127.0.0.1:0", GRPCAddr: "127.0.0.1:0",
 		ShutdownTimeout: 2 * time.Second,
 	}
 }

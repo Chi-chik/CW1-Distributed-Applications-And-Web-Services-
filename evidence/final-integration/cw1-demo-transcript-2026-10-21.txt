@@ -1,0 +1,222 @@
+
+== 1. Health of both nodes
+$ curl -s localhost:8081/healthz; curl -s localhost:8082/healthz
+{
+  "status": "ok",
+  "nodeId": "node1",
+  "uptimeSeconds": 0,
+  "time": "2026-10-21T12:14:18Z"
+}
+{
+  "status": "ok",
+  "nodeId": "node2",
+  "uptimeSeconds": 0,
+  "time": "2026-10-21T12:14:18Z"
+}
+
+
+== 2. REST state change on node2
+$ curl -s -X POST localhost:8082/v1/node/status -H Content-Type:application/json -d '{"status":"draining","reason":"demo"}'
+{
+  "id": "node2",
+  "status": "draining",
+  "reason": "demo",
+  "updatedAt": "2026-10-21T12:14:18.252123891Z"
+}
+
+
+== 3. Register file metadata on node2
+$ curl -s -X POST localhost:8082/v1/files -H Content-Type:application/json -d '{"name":"hello.txt","size":11,"sha256":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"}'
+{
+  "name": "hello.txt",
+  "size": 11,
+  "sha256": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+  "owner": "node2",
+  "updatedAt": "2026-10-21T12:14:18.259006609Z"
+}
+
+
+== 4. node1 probes node2 (TCP+UDP+gRPC)
+$ curl -s -X POST localhost:8081/v1/peers/node2/probe
+{
+  "peerId": "node2",
+  "tcp": {
+    "ok": true,
+    "rttMs": 0.686
+  },
+  "udp": {
+    "ok": true,
+    "rttMs": 0.298
+  },
+  "grpc": {
+    "ok": true,
+    "rttMs": 2.39
+  }
+}
+
+
+== 5. node1 lists node2's files (gRPC)
+$ curl -s localhost:8081/v1/peers/node2/files
+{
+  "peerId": "node2",
+  "count": 1,
+  "files": [
+    {
+      "name": "hello.txt",
+      "size": 11,
+      "sha256": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
+      "owner": "node2",
+      "updatedAt": "2026-10-21T12:14:18.259Z"
+    }
+  ]
+}
+
+
+== 6. Direct TCP ping with p2pctl
+$ '/tmp/tmp.yZmVQZAAFG/p2pctl' tcp-ping -addr 127.0.0.1:7082 -from node1
+{
+  "v": 1,
+  "type": "pong",
+  "id": "a6db47986c7301a8",
+  "from": "node2",
+  "ts": 1792584858283,
+  "body": {
+    "nodeId": "node2",
+    "status": "draining",
+    "peers": 1,
+    "files": 1
+  }
+}
+(round trip 612µs)
+
+
+== 7. Direct gRPC call with p2pctl
+$ '/tmp/tmp.yZmVQZAAFG/p2pctl' info -addr 127.0.0.1:9082
+{
+  "node_id": "node2",
+  "status": "draining",
+  "started_unix_ms": 1792584858213,
+  "peer_count": 1,
+  "file_count": 1,
+  "protocol_version": 1
+}
+
+
+-------- negative cases --------
+
+== N1. Malformed JSON -> 400
+$ curl -s -o /dev/stderr -w 'HTTP %{http_code}\n' -X POST localhost:8081/v1/peers -H Content-Type:application/json -d '{"id":' 2>&1
+{
+  "error": {
+    "code": "invalid_json",
+    "message": "malformed JSON",
+    "requestId": "ca3f5dcea4b7ce68"
+  }
+}
+HTTP 400
+
+
+== N2. Unknown field -> 400
+$ curl -s -w '\nHTTP %{http_code}\n' -X POST localhost:8081/v1/node/status -H Content-Type:application/json -d '{"status":"active","admin":true}'
+{
+  "error": {
+    "code": "unknown_field",
+    "message": "unknown field \"admin\"",
+    "requestId": "b982faebce6fc0a9"
+  }
+}
+
+HTTP 400
+
+
+== N3. Wrong media type -> 415
+$ curl -s -w '\nHTTP %{http_code}\n' -X POST localhost:8081/v1/node/status -H 'Content-Type: text/plain' -d x
+{
+  "error": {
+    "code": "unsupported_media_type",
+    "message": "Content-Type must be application/json",
+    "requestId": "e92b27da4fefaa68"
+  }
+}
+
+HTTP 415
+
+
+== N4. Path traversal name -> 422
+$ curl -s -w '\nHTTP %{http_code}\n' -X POST localhost:8081/v1/files -H Content-Type:application/json -d '{"name":"../etc/passwd","size":1,"sha256":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"}'
+{
+  "error": {
+    "code": "invalid_value",
+    "message": "invalid: file name \"../etc/passwd\" must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ and not contain '..'",
+    "requestId": "b1114aefaffc9843"
+  }
+}
+
+HTTP 422
+
+
+== N5. Duplicate peer -> 409
+$ curl -s -w '\nHTTP %{http_code}\n' -X POST localhost:8081/v1/peers -H Content-Type:application/json -d '{"id":"node2","addrs":{"grpc":"127.0.0.1:9082"}}'
+{
+  "error": {
+    "code": "conflict",
+    "message": "conflict: peer \"node2\" already registered",
+    "requestId": "115c2104a66c849f"
+  }
+}
+
+HTTP 409
+
+
+== N6. Invalid gRPC request
+$ '/tmp/tmp.yZmVQZAAFG/p2pctl' files -addr 127.0.0.1:9082 -prefix '../x'
+files failed: code=InvalidArgument msg="name_prefix must be ≤128 chars of A-Z a-z 0-9 . _ -"
+
+
+== N7. UDP to closed port
+$ '/tmp/tmp.yZmVQZAAFG/p2pctl' udp-ping -addr 127.0.0.1:7999 -timeout 600ms
+udp-ping failed after 0s: udp request to 127.0.0.1:7999 failed after 3 attempts: read udp 127.0.0.1:50817->127.0.0.1:7999: read: connection refused
+
+
+== N8. Port already in use -> exit 1
+$ '/tmp/tmp.yZmVQZAAFG/node' -id node1 -http 127.0.0.1:8081 -tcp 127.0.0.1:7081 -udp 127.0.0.1:7081 -grpc 127.0.0.1:9081 2>&1 | tail -1; echo "exit code: ${PIPESTATUS[0]}"
+{"time":"2026-10-21T13:14:18.360637758+01:00","level":"ERROR","msg":"startup failed","node":"node1","err":"bind http 127.0.0.1:8081: listen tcp 127.0.0.1:8081: bind: address already in use"}
+exit code: 1
+
+
+-------- peer failure --------
+
+== F1. node2 stopped; node1 lists files -> 502 within bound
+$ time curl -s -w '\nHTTP %{http_code}\n' localhost:8081/v1/peers/node2/files
+{
+  "error": {
+    "code": "peer_unavailable",
+    "message": "peer unavailable: node2: connection error: desc = \"transport: Error while dialing: dial tcp 127.0.0.1:9082: connect: connection refused\"",
+    "requestId": "52068f5c85267c90"
+  }
+}
+
+HTTP 502
+
+real	0m0.007s
+user	0m0.006s
+sys	0m0.000s
+
+
+== F2. node1 still healthy
+$ curl -s localhost:8081/healthz
+{
+  "status": "ok",
+  "nodeId": "node1",
+  "uptimeSeconds": 0,
+  "time": "2026-10-21T12:14:18Z"
+}
+
+== Shutdown logs (last 2 lines each)
+==> /tmp/tmp.Z0E1AqT8e9/node1.log <==
+{"time":"2026-10-21T13:14:18.378661716+01:00","level":"INFO","msg":"shutdown requested","node":"node1"}
+{"time":"2026-10-21T13:14:18.378857239+01:00","level":"INFO","msg":"node stopped","node":"node1","id":"node1"}
+
+==> /tmp/tmp.Z0E1AqT8e9/node2.log <==
+{"time":"2026-10-21T13:14:18.361516213+01:00","level":"INFO","msg":"shutdown requested","node":"node2"}
+{"time":"2026-10-21T13:14:18.361989784+01:00","level":"INFO","msg":"node stopped","node":"node2","id":"node2"}

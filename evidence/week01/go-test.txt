@@ -1,0 +1,42 @@
+Week 01 tests: ./internal/config ./internal/node
+Student: 100872005
+Produced: 2026-11-13 18:06 UTC, from the final-cw1 source
+
+=== RUN   TestParseValid
+--- PASS: TestParseValid (0.00s)
+=== RUN   TestEnvFallbackAndFlagPrecedence
+--- PASS: TestEnvFallbackAndFlagPrecedence (0.00s)
+=== RUN   TestParseRejectsBadInput
+=== RUN   TestParseRejectsBadInput/missing_id
+=== RUN   TestParseRejectsBadInput/uppercase_id
+=== RUN   TestParseRejectsBadInput/no_port
+=== RUN   TestParseRejectsBadInput/port_too_big
+=== RUN   TestParseRejectsBadInput/unknown_flag
+=== RUN   TestParseRejectsBadInput/stray_arg
+=== RUN   TestParseRejectsBadInput/zero_timeout
+--- PASS: TestParseRejectsBadInput (0.00s)
+    --- PASS: TestParseRejectsBadInput/missing_id (0.00s)
+    --- PASS: TestParseRejectsBadInput/uppercase_id (0.00s)
+    --- PASS: TestParseRejectsBadInput/no_port (0.00s)
+    --- PASS: TestParseRejectsBadInput/port_too_big (0.00s)
+    --- PASS: TestParseRejectsBadInput/unknown_flag (0.00s)
+    --- PASS: TestParseRejectsBadInput/stray_arg (0.00s)
+    --- PASS: TestParseRejectsBadInput/zero_timeout (0.00s)
+=== RUN   TestHelpIsDistinguishable
+--- PASS: TestHelpIsDistinguishable (0.00s)
+=== RUN   TestPeerSpecs
+--- PASS: TestPeerSpecs (0.00s)
+PASS
+ok  	p2pfs/internal/config	0.183s
+=== RUN   TestIntegratedTwoNodeFlowOverREST
+--- PASS: TestIntegratedTwoNodeFlowOverREST (0.01s)
+=== RUN   TestStaticPeersFromConfig
+--- PASS: TestStaticPeersFromConfig (0.00s)
+=== RUN   TestOccupiedPortFailsAndReleasesEarlierBinds
+--- PASS: TestOccupiedPortFailsAndReleasesEarlierBinds (0.00s)
+=== RUN   TestRunServesAllTransportsAndStops
+--- PASS: TestRunServesAllTransportsAndStops (0.00s)
+=== RUN   TestTwoNodesExchangeMessagesAndUpdatePeerState
+--- PASS: TestTwoNodesExchangeMessagesAndUpdatePeerState (0.01s)
+PASS
+ok  	p2pfs/internal/node	0.289s

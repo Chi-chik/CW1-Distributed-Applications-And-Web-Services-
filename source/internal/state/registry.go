@@ -21,6 +21,8 @@ var (
 	ErrInvalid  = errors.New("invalid")
 	ErrNotFound = errors.New("not found")
 	ErrConflict = errors.New("conflict")
+	// ErrUnavailable means a remote peer could not be reached.
+	ErrUnavailable = errors.New("peer unavailable")
 )
 
 // NodeStatus is the operator-controlled mode of this node.

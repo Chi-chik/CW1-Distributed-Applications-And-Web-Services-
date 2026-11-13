@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -43,6 +44,8 @@ func newAPIError(status int, code, format string, args ...any) *apiError {
 //   - state.ErrInvalid  -> 422 Unprocessable Content (well-formed but wrong)
 //   - state.ErrNotFound -> 404
 //   - state.ErrConflict -> 409
+//   - state.ErrUnavailable -> 502 Bad Gateway (a peer we depend on failed)
+//   - context.DeadlineExceeded -> 504 Gateway Timeout
 //   - anything else     -> 500 with a generic message (never leak internals)
 func writeError(w http.ResponseWriter, r *http.Request, err error) {
 	var ae *apiError
@@ -54,6 +57,10 @@ func writeError(w http.ResponseWriter, r *http.Request, err error) {
 		ae = newAPIError(http.StatusNotFound, "not_found", "%s", err.Error())
 	case errors.Is(err, state.ErrConflict):
 		ae = newAPIError(http.StatusConflict, "conflict", "%s", err.Error())
+	case errors.Is(err, state.ErrUnavailable):
+		ae = newAPIError(http.StatusBadGateway, "peer_unavailable", "%s", err.Error())
+	case errors.Is(err, context.DeadlineExceeded):
+		ae = newAPIError(http.StatusGatewayTimeout, "peer_timeout", "%s", err.Error())
 	default:
 		loggerFrom(r).Error("internal error", "err", err)
 		ae = newAPIError(http.StatusInternalServerError, "internal", "internal server error")

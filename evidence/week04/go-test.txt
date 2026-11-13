@@ -1,0 +1,38 @@
+Week 04 tests: ./internal/ipc
+Student: 100872005
+Produced: 2026-11-13 18:06 UTC, from the final-cw1 source
+
+=== RUN   TestFrameRoundTripAndLimits
+--- PASS: TestFrameRoundTripAndLimits (0.00s)
+=== RUN   TestEnvelopeValidation
+--- PASS: TestEnvelopeValidation (0.00s)
+=== RUN   TestTCPRoundTrip
+--- PASS: TestTCPRoundTrip (0.00s)
+=== RUN   TestTCPMultipleMessagesOnOneConnection
+--- PASS: TestTCPMultipleMessagesOnOneConnection (0.00s)
+=== RUN   TestTCPMalformedMessageGetsErrorAndConnectionSurvives
+--- PASS: TestTCPMalformedMessageGetsErrorAndConnectionSurvives (0.00s)
+=== RUN   TestTCPOversizeFrameClosesConnection
+--- PASS: TestTCPOversizeFrameClosesConnection (0.00s)
+=== RUN   TestTCPClientTimesOutAgainstSilentServer
+--- PASS: TestTCPClientTimesOutAgainstSilentServer (0.20s)
+=== RUN   TestTCPClientCancellation
+--- PASS: TestTCPClientCancellation (0.10s)
+=== RUN   TestTCPUnavailablePeer
+--- PASS: TestTCPUnavailablePeer (0.00s)
+=== RUN   TestTCPShutdownClosesIdleConnections
+--- PASS: TestTCPShutdownClosesIdleConnections (0.05s)
+=== RUN   TestUDPRoundTrip
+--- PASS: TestUDPRoundTrip (0.00s)
+=== RUN   TestUDPRetrySurvivesDroppedDatagram
+--- PASS: TestUDPRetrySurvivesDroppedDatagram (0.30s)
+=== RUN   TestUDPNoRetryFailsOnLoss
+--- PASS: TestUDPNoRetryFailsOnLoss (0.20s)
+=== RUN   TestUDPOversizeIsDroppedAndMalformedGetsError
+--- PASS: TestUDPOversizeIsDroppedAndMalformedGetsError (0.30s)
+=== RUN   TestUDPClientRejectsOversizeRequest
+--- PASS: TestUDPClientRejectsOversizeRequest (0.00s)
+=== RUN   TestUDPShutdownUnblocksServe
+--- PASS: TestUDPShutdownUnblocksServe (0.02s)
+PASS
+ok  	p2pfs/internal/ipc	1.377s

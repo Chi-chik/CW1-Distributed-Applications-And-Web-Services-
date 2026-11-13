@@ -1,0 +1,50 @@
+Week 02 tests: ./internal/httpapi
+Student: 100872005
+Produced: 2026-11-13 18:06 UTC, from the final-cw1 source
+
+=== RUN   TestHealthHandler
+--- PASS: TestHealthHandler (0.00s)
+=== RUN   TestHealthRejectsWrongMethod
+--- PASS: TestHealthRejectsWrongMethod (0.00s)
+=== RUN   TestPeerLifecycleOverREST
+--- PASS: TestPeerLifecycleOverREST (0.00s)
+=== RUN   TestPeerRejectionsOverREST
+=== RUN   TestPeerRejectionsOverREST/server_field
+=== RUN   TestPeerRejectionsOverREST/bad_address
+=== RUN   TestPeerRejectionsOverREST/self
+--- PASS: TestPeerRejectionsOverREST (0.00s)
+    --- PASS: TestPeerRejectionsOverREST/server_field (0.00s)
+    --- PASS: TestPeerRejectionsOverREST/bad_address (0.00s)
+    --- PASS: TestPeerRejectionsOverREST/self (0.00s)
+=== RUN   TestFileMetadataOverREST
+--- PASS: TestFileMetadataOverREST (0.00s)
+=== RUN   TestGetNode
+--- PASS: TestGetNode (0.00s)
+=== RUN   TestSetStatusValid
+--- PASS: TestSetStatusValid (0.00s)
+=== RUN   TestSetStatusRejections
+=== RUN   TestSetStatusRejections/wrong_media_type
+=== RUN   TestSetStatusRejections/missing_media_type
+=== RUN   TestSetStatusRejections/malformed_json
+=== RUN   TestSetStatusRejections/empty_body
+=== RUN   TestSetStatusRejections/unknown_field
+=== RUN   TestSetStatusRejections/wrong_type
+=== RUN   TestSetStatusRejections/two_objects
+=== RUN   TestSetStatusRejections/invalid_value
+=== RUN   TestSetStatusRejections/too_large
+--- PASS: TestSetStatusRejections (0.00s)
+    --- PASS: TestSetStatusRejections/wrong_media_type (0.00s)
+    --- PASS: TestSetStatusRejections/missing_media_type (0.00s)
+    --- PASS: TestSetStatusRejections/malformed_json (0.00s)
+    --- PASS: TestSetStatusRejections/empty_body (0.00s)
+    --- PASS: TestSetStatusRejections/unknown_field (0.00s)
+    --- PASS: TestSetStatusRejections/wrong_type (0.00s)
+    --- PASS: TestSetStatusRejections/two_objects (0.00s)
+    --- PASS: TestSetStatusRejections/invalid_value (0.00s)
+    --- PASS: TestSetStatusRejections/too_large (0.00s)
+=== RUN   TestUnknownRouteAndMethodGiveJSON
+--- PASS: TestUnknownRouteAndMethodGiveJSON (0.00s)
+=== RUN   TestClientRequestIDIsEchoedOnlyIfSafe
+--- PASS: TestClientRequestIDIsEchoedOnlyIfSafe (0.00s)
+PASS
+ok  	p2pfs/internal/httpapi	0.214s

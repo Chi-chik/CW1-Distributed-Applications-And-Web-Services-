@@ -64,3 +64,28 @@ func TestHelpIsDistinguishable(t *testing.T) {
 		t.Fatalf("want ErrHelp, got %v", err)
 	}
 }
+
+func TestPeerSpecs(t *testing.T) {
+	c, err := Parse([]string{"-id", "node1",
+		"-peer", "node2,grpc=127.0.0.1:9082,tcp=127.0.0.1:7082",
+		"-peer", "node3,udp=127.0.0.1:7083"}, noEnv, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(c.Peers) != 2 || c.Peers[0].GRPC != "127.0.0.1:9082" || c.Peers[1].UDP != "127.0.0.1:7083" {
+		t.Fatalf("%+v", c.Peers)
+	}
+	env := map[string]string{"NODE_ID": "node1", "NODE_PEERS": "node2,grpc=node2:9090; node3,grpc=node3:9090"}
+	c, err = Parse(nil, func(k string) string { return env[k] }, io.Discard)
+	if err != nil || len(c.Peers) != 2 || c.Peers[1].GRPC != "node3:9090" {
+		t.Fatalf("env peers: %+v %v", c.Peers, err)
+	}
+	for _, bad := range []string{"Node2,grpc=h:1", "node2", "node2,grpc", "node2,ftp=h:1", "node2,grpc=nohost"} {
+		if _, err := Parse([]string{"-id", "node1", "-peer", bad}, noEnv, io.Discard); err == nil {
+			t.Errorf("accepted %q", bad)
+		}
+	}
+	if _, err := Parse([]string{"-id", "node1", "-peer", "node1,grpc=h:1"}, noEnv, io.Discard); err == nil {
+		t.Error("accepted self as peer")
+	}
+}

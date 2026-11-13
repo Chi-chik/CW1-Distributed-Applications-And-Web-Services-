@@ -1,0 +1,22 @@
+Week 05 tests: ./internal/rpc
+Student: 100872005
+Produced: 2026-11-13 18:07 UTC, from the final-cw1 source
+
+=== RUN   TestGetNodeInfo
+--- PASS: TestGetNodeInfo (0.00s)
+=== RUN   TestListFilesPagesDeterministically
+--- PASS: TestListFilesPagesDeterministically (0.00s)
+=== RUN   TestListFilesPrefix
+--- PASS: TestListFilesPrefix (0.00s)
+=== RUN   TestListFilesInvalidArguments
+--- PASS: TestListFilesInvalidArguments (0.00s)
+=== RUN   TestUnavailablePeerFailsFastWithUnavailable
+--- PASS: TestUnavailablePeerFailsFastWithUnavailable (0.00s)
+=== RUN   TestCallerDeadlineIsPropagated
+--- PASS: TestCallerDeadlineIsPropagated (0.00s)
+=== RUN   TestDomainErrorMapping
+--- PASS: TestDomainErrorMapping (0.00s)
+=== RUN   TestPoolReusesConnectionsAndRefusesAfterClose
+--- PASS: TestPoolReusesConnectionsAndRefusesAfterClose (0.00s)
+PASS
+ok  	p2pfs/internal/rpc	0.256s
