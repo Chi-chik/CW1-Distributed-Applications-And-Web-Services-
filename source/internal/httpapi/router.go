@@ -38,6 +38,16 @@ func NewRouter(d Deps) http.Handler {
 	mux.Handle("GET /healthz", HealthHandler(d.NodeID, d.Started, d.Now))
 	mux.HandleFunc("GET /v1/node", a.getNode)
 	mux.HandleFunc("POST /v1/node/status", a.setStatus)
+	mux.HandleFunc("GET /v1/state", a.getState)
+
+	mux.HandleFunc("GET /v1/peers", a.listPeers)
+	mux.HandleFunc("POST /v1/peers", a.addPeer)
+	mux.HandleFunc("GET /v1/peers/{id}", a.getPeer)
+	mux.HandleFunc("DELETE /v1/peers/{id}", a.deletePeer)
+
+	mux.HandleFunc("GET /v1/files", a.listFiles)
+	mux.HandleFunc("POST /v1/files", a.addFile)
+	mux.HandleFunc("GET /v1/files/{name}", a.getFile)
 
 	return withCommon(jsonMuxErrors(mux), d.Log)
 }
