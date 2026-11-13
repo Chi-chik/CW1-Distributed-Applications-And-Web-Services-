@@ -9,12 +9,21 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"p2pfs/internal/config"
 	"p2pfs/internal/httpapi"
+	"p2pfs/internal/ipc"
 	"p2pfs/internal/state"
 )
+
+// component is anything the node starts and stops.
+type component struct {
+	name  string
+	serve func() error // blocks; returns nil after a clean stop
+	stop  func(context.Context) error
+}
 
 // Node is one running peer.
 type Node struct {
@@ -25,27 +34,49 @@ type Node struct {
 
 	httpLn  net.Listener
 	httpSrv *http.Server
+	tcp     *ipc.TCPServer
+	udp     *ipc.UDPServer
+
+	components []component
 }
 
-// New binds the listeners immediately. Binding here, rather than inside Run,
-// means an occupied port is reported as a startup error before anything is
-// "running", so main can exit cleanly with a clear message.
-func New(cfg config.Config, log *slog.Logger) (*Node, error) {
-	ln, err := net.Listen("tcp", cfg.HTTPAddr)
+// New binds every listener immediately. If any bind fails, the ones already
+// bound are closed before returning, so a failed start leaks nothing.
+func New(cfg config.Config, log *slog.Logger) (n *Node, err error) {
+	var closers []func() error
+	defer func() {
+		if err != nil {
+			for i := len(closers) - 1; i >= 0; i-- {
+				_ = closers[i]()
+			}
+		}
+	}()
+
+	httpLn, err := net.Listen("tcp", cfg.HTTPAddr)
 	if err != nil {
 		return nil, fmt.Errorf("bind http %s: %w", cfg.HTTPAddr, err)
 	}
+	closers = append(closers, httpLn.Close)
 
-	n := &Node{cfg: cfg, log: log, started: time.Now(), httpLn: ln}
+	tcpLn, err := net.Listen("tcp", cfg.TCPAddr)
+	if err != nil {
+		return nil, fmt.Errorf("bind tcp %s: %w", cfg.TCPAddr, err)
+	}
+	closers = append(closers, tcpLn.Close)
+
+	udpPC, err := net.ListenPacket("udp", cfg.UDPAddr)
+	if err != nil {
+		return nil, fmt.Errorf("bind udp %s: %w", cfg.UDPAddr, err)
+	}
+	closers = append(closers, udpPC.Close)
+
+	n = &Node{cfg: cfg, log: log, started: time.Now(), httpLn: httpLn}
 	n.reg = state.NewRegistry(cfg.NodeID, time.Now)
 
-	router := httpapi.NewRouter(httpapi.Deps{
-		NodeID: cfg.NodeID, Started: n.started, Now: time.Now,
-		Registry: n.reg, Log: log,
-	})
-
 	n.httpSrv = &http.Server{
-		Handler:           router,
+		Handler: httpapi.NewRouter(httpapi.Deps{
+			NodeID: cfg.NodeID, Started: n.started, Now: time.Now, Registry: n.reg, Log: log,
+		}),
 		ReadHeaderTimeout: 5 * time.Second, // slowloris protection
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
@@ -53,35 +84,66 @@ func New(cfg config.Config, log *slog.Logger) (*Node, error) {
 		MaxHeaderBytes:    16 << 10,
 		ErrorLog:          slog.NewLogLogger(log.Handler(), slog.LevelWarn),
 	}
+	n.tcp = ipc.NewTCPServer(tcpLn, cfg.NodeID, n.handleMessage, log.With("transport", "tcp"))
+	n.udp = ipc.NewUDPServer(udpPC, cfg.NodeID, n.handleMessage, log.With("transport", "udp"))
+
+	n.components = []component{
+		{"http", func() error {
+			if err := n.httpSrv.Serve(httpLn); !errors.Is(err, http.ErrServerClosed) {
+				return err
+			}
+			return nil
+		}, n.httpSrv.Shutdown},
+		{"tcp", n.tcp.Serve, n.tcp.Shutdown},
+		{"udp", n.udp.Serve, n.udp.Shutdown},
+	}
 	return n, nil
 }
 
-// HTTPAddr is the actual bound address (useful when the port was 0).
-func (n *Node) HTTPAddr() string { return n.httpLn.Addr().String() }
+// Registry exposes the state owner (used by tests and later components).
+func (n *Node) Registry() *state.Registry { return n.reg }
 
-// Run serves until ctx is cancelled or a server fails, then shuts down.
+// HTTPAddr, TCPAddr and UDPAddr are the actual bound addresses.
+func (n *Node) HTTPAddr() string { return n.httpLn.Addr().String() }
+func (n *Node) TCPAddr() string  { return n.tcp.Addr() }
+func (n *Node) UDPAddr() string  { return n.udp.Addr() }
+
+// Run serves every component until ctx is cancelled or one fails. Either way,
+// all components are stopped in reverse start order within ShutdownTimeout.
 func (n *Node) Run(ctx context.Context) error {
-	errCh := make(chan error, 1)
-	go func() { errCh <- n.httpSrv.Serve(n.httpLn) }()
-	n.log.Info("node started", "id", n.cfg.NodeID, "http", n.HTTPAddr())
+	errCh := make(chan error, len(n.components))
+	var wg sync.WaitGroup
+	for _, c := range n.components {
+		wg.Add(1)
+		go func(c component) {
+			defer wg.Done()
+			if err := c.serve(); err != nil {
+				errCh <- fmt.Errorf("%s: %w", c.name, err)
+			}
+		}(c)
+	}
+	n.log.Info("node started", "id", n.cfg.NodeID,
+		"http", n.HTTPAddr(), "tcp", n.TCPAddr(), "udp", n.UDPAddr())
 
 	var runErr error
 	select {
 	case <-ctx.Done():
 		n.log.Info("shutdown requested")
-	case err := <-errCh:
-		if !errors.Is(err, http.ErrServerClosed) {
-			runErr = fmt.Errorf("http server: %w", err)
-		}
+	case runErr = <-errCh:
+		n.log.Error("component failed; shutting down", "err", runErr)
 	}
 
-	// A fresh context: the parent is already cancelled, but draining
-	// in-flight requests deserves its own bounded window.
+	// Fresh context: the parent is already cancelled, but draining
+	// in-flight work deserves its own bounded window.
 	sctx, cancel := context.WithTimeout(context.Background(), n.cfg.ShutdownTimeout)
 	defer cancel()
-	if err := n.httpSrv.Shutdown(sctx); err != nil {
-		runErr = errors.Join(runErr, fmt.Errorf("http shutdown: %w", err))
+	for i := len(n.components) - 1; i >= 0; i-- {
+		c := n.components[i]
+		if err := c.stop(sctx); err != nil {
+			runErr = errors.Join(runErr, fmt.Errorf("stop %s: %w", c.name, err))
+		}
 	}
+	wg.Wait() // every serve goroutine has returned: nothing left running
 	n.log.Info("node stopped", "id", n.cfg.NodeID)
 	return runErr
 }

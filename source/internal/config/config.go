@@ -20,6 +20,8 @@ import (
 type Config struct {
 	NodeID          string
 	HTTPAddr        string
+	TCPAddr         string
+	UDPAddr         string
 	ShutdownTimeout time.Duration
 }
 
@@ -54,6 +56,8 @@ func Parse(args []string, getenv func(string) string, out io.Writer) (Config, er
 	var c Config
 	fs.StringVar(&c.NodeID, "id", env("NODE_ID", ""), "unique node ID, e.g. node1 (env NODE_ID)")
 	fs.StringVar(&c.HTTPAddr, "http", env("NODE_HTTP_ADDR", "127.0.0.1:8081"), "REST listen address host:port (env NODE_HTTP_ADDR)")
+	fs.StringVar(&c.TCPAddr, "tcp", env("NODE_TCP_ADDR", "127.0.0.1:7081"), "TCP message listen address (env NODE_TCP_ADDR)")
+	fs.StringVar(&c.UDPAddr, "udp", env("NODE_UDP_ADDR", "127.0.0.1:7081"), "UDP message listen address (env NODE_UDP_ADDR)")
 	fs.DurationVar(&c.ShutdownTimeout, "shutdown-timeout", envDur("NODE_SHUTDOWN_TIMEOUT", 5*time.Second), "max time to drain on shutdown")
 
 	if err := fs.Parse(args); err != nil {
@@ -72,8 +76,11 @@ func (c Config) Validate() error {
 	if !nodeIDPattern.MatchString(c.NodeID) {
 		errs = append(errs, fmt.Errorf("invalid node id %q: want 1-32 chars of a-z, 0-9 or '-'", c.NodeID))
 	}
-	if err := ValidateHostPort(c.HTTPAddr); err != nil {
-		errs = append(errs, fmt.Errorf("http address: %w", err))
+	// A slice, not a map: map order is random and error output should be stable.
+	for _, a := range [][2]string{{"http", c.HTTPAddr}, {"tcp", c.TCPAddr}, {"udp", c.UDPAddr}} {
+		if err := ValidateHostPort(a[1]); err != nil {
+			errs = append(errs, fmt.Errorf("%s address: %w", a[0], err))
+		}
 	}
 	if c.ShutdownTimeout <= 0 || c.ShutdownTimeout > time.Minute {
 		errs = append(errs, fmt.Errorf("shutdown timeout %s out of range (0, 1m]", c.ShutdownTimeout))
