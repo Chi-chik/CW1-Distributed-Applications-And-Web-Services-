@@ -13,6 +13,7 @@ import (
 
 	"p2pfs/internal/config"
 	"p2pfs/internal/httpapi"
+	"p2pfs/internal/state"
 )
 
 // Node is one running peer.
@@ -20,6 +21,7 @@ type Node struct {
 	cfg     config.Config
 	log     *slog.Logger
 	started time.Time
+	reg     *state.Registry
 
 	httpLn  net.Listener
 	httpSrv *http.Server
@@ -35,12 +37,15 @@ func New(cfg config.Config, log *slog.Logger) (*Node, error) {
 	}
 
 	n := &Node{cfg: cfg, log: log, started: time.Now(), httpLn: ln}
+	n.reg = state.NewRegistry(cfg.NodeID, time.Now)
 
-	mux := http.NewServeMux()
-	mux.Handle("GET /healthz", httpapi.HealthHandler(cfg.NodeID, n.started, time.Now))
+	router := httpapi.NewRouter(httpapi.Deps{
+		NodeID: cfg.NodeID, Started: n.started, Now: time.Now,
+		Registry: n.reg, Log: log,
+	})
 
 	n.httpSrv = &http.Server{
-		Handler:           mux,
+		Handler:           router,
 		ReadHeaderTimeout: 5 * time.Second, // slowloris protection
 		ReadTimeout:       10 * time.Second,
 		WriteTimeout:      10 * time.Second,
