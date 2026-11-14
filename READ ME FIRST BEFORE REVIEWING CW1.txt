@@ -1,0 +1,7 @@
+I'm writing about my 6CC545 CW1 submission (student number 100872005), which I'm submitting after the 30 October deadline. I'd rather explain the situation upfront than leave you to find it in the repository.
+
+I developed the prototype locally on 21 October but didn't commit it to GitHub at the time. On 13 November I committed it in five commits, one per syllabus week, and tagged week01 to week05 and final-cw1. All of those commits are dated 13 November, so they aren't checkpoint evidence made at the time. My implementation log records this.
+
+The submission also includes an AI-use statement. It describes how I used Claude for the documentation, evidence, commit preparation and packaging, but not for the Go code or the tests. The zip has two documentation files that differ from the final-cw1 tag (a re-run and diagnosis of an intermittent test failure), and repository.txt explains this. No source code differs.
+
+Could you let me know how the late submission and the weekly checkpoint marks will be handled, and whether I should do anything else? I'm happy to run the build, demonstrate the two-node flow or talk through any part of the design if that helps with verification.

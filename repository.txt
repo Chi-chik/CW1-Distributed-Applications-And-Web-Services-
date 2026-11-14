@@ -1,0 +1,14 @@
+Repository:  https://github.com/Chi-chik/CW1-Distributed-Applications-And-Web-Services-
+Visibility:  PUBLIC
+Branch:      main
+Tag:         final-cw1 (on the week 5 commit)
+Commit:      9d362ea8d63eb34e6b533ac48f40deb0aba45931
+
+History note: the work was developed locally on 21 October 2026 and committed
+on 13 November 2026 in five commits, one per syllabus week.
+
+Files in this zip that differ from final-cw1: docs/test-results.txt,
+implementation-log.md, cw1-commentary.pdf (revised commentary), and the added
+files "READ ME FIRST BEFORE REVIEWING CW1.txt" and repository.txt. These were
+committed on main after final-cw1. No source code differs, and final-cw1 has
+not been moved.
